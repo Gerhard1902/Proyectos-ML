@@ -1,0 +1,201 @@
+# kmeans clustering
+
+library(stats)
+library(ggplot2)
+library(dplyr)
+
+#Importing my data
+library(readr)
+data <- read_csv("Ecommerce.csv")
+
+#Select a seed haphazardly
+
+seed(3101)
+
+#View the structure of the data, calculate totals
+str(data)
+data["X9"] <- NULL
+data["total_invoice"]<- data["Quantity"]*data["UnitPrice"]
+
+#Understanding the data
+View(data)
+table(data$Country)
+summary(data)
+
+#Looking for missing customer ids
+
+data[is.na(data$CustomerID),]
+
+# Remove the records with missing values . 
+
+data = na.omit(data)
+
+
+#Aggregate relevant data that will be used to plot and manipulate my models
+v1<- aggregate(total_invoice~ CustomerID + Country,data,sum)
+v2<-aggregate(Quantity~CustomerID,data,length)
+
+Result<- merge(v1,v2)
+View(Result)
+
+
+
+#Eliminating outliers based on boxplot from first and last quartile
+Q <- quantile(Result$total_invoice, probs=c(.25, .75), na.rm = FALSE)
+iqr <- IQR(Result$total_invoice)
+eliminated<- subset(Result, Result$total_invoice > (Q[1] - 1.5*iqr) & Result$total_invoice < (Q[2]+1.5*iqr))
+
+Q <- quantile(eliminated$Quantity, probs=c(.25, .75), na.rm = FALSE)
+iqr <- IQR(eliminated$Quantity)
+eliminated<- subset(eliminated, eliminated$Quantity > (Q[1] - 1.5*iqr) & eliminated$Quantity < (Q[2]+1.5*iqr))
+
+#Kmeans
+Kmeans_elim=eliminated
+Hierarchical=eliminated
+View(Kmeans_elim)
+eliminated["CustomerID"]<-NULL
+eliminated["Country"]<-NULL
+eliminated["Quantity"]<-NULL
+
+#eliminated will also be used for hierarquical clustering
+View(eliminated)
+
+
+#scaling data before kmeans function
+Kmeans_data<- scale(eliminated) 
+
+
+
+#Finding and optimal number of clusters
+y<-kmeans(Kmeans_data,centers=1)$betweenss
+for (i in 1:10) y[i]<- kmeans(Kmeans_data,centers=i)$betweenss
+plot(1:10, y, type="b", xlab="number of clusters", ylab="intergroups")
+
+#Applying Kmeans formula with 2 clusters
+Kmeans_cluster=kmeans(Kmeans_data,2,iter.max=20)
+str(Kmeans_cluster)
+
+Kmeans_elim <-cbind(Kmeans_elim, ClusterNum= Kmeans_cluster$cluster)
+View(Kmeans_elim)
+
+
+
+table(Kmeans_elim$ClusterNum)
+####PLotting
+
+#variable will be used to further inspect the loaded cluster, 
+Kmeans_group2<-Kmeans_elim[Kmeans_elim$ClusterNum==1 ,]
+
+
+plot(Kmeans_elim$CustomerID, Kmeans_elim$total_invoice, col=Kmeans_elim$ClusterNum, xlab="Quantity", ylab="Total_invoice")
+
+
+##Analizing cluster #2- higher sales
+Kmeans_group1<-Kmeans_elim[Kmeans_elim$ClusterNum==2 ,]
+plot(Kmeans_group1$Quantity, Kmeans_group1$total_invoice, col="orange", xlab="Quantity", ylab="Total_invoice")
+View(Kmeans_group1)
+max(Kmeans_group1$total_invoice)
+min(Kmeans_group1$total_invoice)
+
+v1<- aggregate(total_invoice~ Country,Kmeans_group1,sum)
+v2<-aggregate(total_invoice~ Country,Kmeans_group1,mean)
+v5<-aggregate(total_invoice~ Country,Kmeans_group1,length)
+
+
+
+colnames(v1)[2]<-"Sum"
+colnames(v2)[2]<-"Mean"
+colnames(v5)[2]<-"# of Customers"
+
+
+Result<- merge(v1,v2)
+Result<- merge(Result, v5)
+View(Result)
+
+
+## Breaking down loaded cluster############################
+Kmeans_group2["ClusterNum"]<-NULL
+count(Kmeans_group2$total_invoice)
+View(Kmeans_group2)
+Cluster2<-Kmeans_group2
+
+Cluster2["CustomerID"]<-NULL
+Cluster2["Country"]<-NULL
+Cluster2["Quantity"]<-NULL
+View(Cluster2)
+#Finding and optimal number of clusters
+y<-kmeans(Cluster2,centers=1)$betweenss
+for (i in 1:10) y[i]<- kmeans(Cluster2,centers=i)$betweenss
+plot(1:10, y, type="b", xlab="number of clusters", ylab="intergroups")
+
+#Applying Kmeans formula with 2 clusters
+Kmeans_cluster=kmeans(Cluster2,2,iter.max=20)
+str(Kmeans_cluster)
+View(Kmeans_cluster)
+Kmeans_cluster2 <-cbind(Kmeans_group2, ClusterNum= Kmeans_cluster$cluster)
+View(Kmeans_cluster2 )
+
+
+
+plot(Kmeans_cluster2$CustomerID, Kmeans_cluster2$total_invoice, col=Kmeans_cluster2$ClusterNum, xlab="Quantity", ylab="Total_invoice")
+
+
+##Analizing higher sales
+Kmeans_group<-Kmeans_cluster2[Kmeans_cluster2$ClusterNum==1 ,]
+plot(Kmeans_group$Quantity, Kmeans_group$total_invoice, col="orange", xlab="Quantity", ylab="Total_invoice")
+max(Kmeans_group$total_invoice)
+min(Kmeans_group$total_invoice)
+
+v1<- aggregate(total_invoice~ Country,Kmeans_group,sum)
+v2<-aggregate(total_invoice~ Country,Kmeans_group,mean)
+v5<-aggregate(total_invoice~ Country,Kmeans_group,length)
+
+
+
+colnames(v1)[2]<-"Sum"
+colnames(v2)[2]<-"Mean"
+colnames(v5)[2]<-"# of Customers"
+
+
+Result<- merge(v1,v2)
+Result<- merge(Result, v5)
+View(Result)
+
+####################
+####################
+#Hierarchical Clustering
+View(Hierarchical)
+cluster_h<-eliminated
+View(cluster_h)
+cluster_h<-dist(Kmeans_elim, method="euclidian")
+fit<-hclust(cluster_h,method="ward")
+groups<-cutree(fit, k=2)
+groups
+
+Finaldata<-cbind(Hierarchical, ClusterNum=groups)
+View(Finaldata)
+plot(fit)
+
+table(Finaldata$ClusterNum)
+
+#analyzing cluster #2
+Hierarchical_cluster2<- Finaldata[Finaldata$ClusterNum==2 ,]
+plot(Hierarchical_cluster2$Quantity, Hierarchical_cluster2$total_invoice, col="orange", xlab="Quantity", ylab="Total_invoice")
+max(Hierarchical_cluster2$total_invoice)
+min(Hierarchical_cluster2$total_invoice)
+
+v1<- aggregate(total_invoice~ Country,Hierarchical_cluster2,sum)
+v2<-aggregate(total_invoice~ Country,Hierarchical_cluster2,mean)
+v5<-aggregate(total_invoice~ Country,Hierarchical_cluster2,length)
+
+
+
+colnames(v1)[2]<-"Sum"
+colnames(v2)[2]<-"Mean"
+colnames(v5)[2]<-"# of Customers"
+
+
+Result<- merge(v1,v2)
+Result<- merge(Result, v5)
+View(Result)
+
